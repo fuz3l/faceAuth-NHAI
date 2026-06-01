@@ -1,10 +1,10 @@
+import { GalleryItem } from '../database/storage';
+
 /**
  * Calculates the cosine similarity between two 128-dimensional face embedding vectors.
- * Cosine similarity measures the cosine of the angle between two non-zero vectors of an inner product space.
- * It is calculated as: (A . B) / (||A|| * ||B||)
  * 
- * @param vecA First 128-dimensional float array
- * @param vecB Second 128-dimensional float array
+ * @param vecA First 128-dimensional array
+ * @param vecB Second 128-dimensional array
  * @returns Similarity score between -1.0 and 1.0 (where 1.0 is identical)
  */
 export function calculateCosineSimilarity(vecA: number[], vecB: number[]): number {
@@ -23,27 +23,10 @@ export function calculateCosineSimilarity(vecA: number[], vecB: number[]): numbe
   }
 
   if (normA === 0 || normB === 0) {
-    return 0.0; // Avoid division by zero
+    return 0.0;
   }
 
   return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
-}
-
-/**
- * Compares a probe face embedding against a list of enrolled gallery embeddings
- * and returns the best match above a specified threshold.
- * 
- * @param probeEmbedding The 128D embedding of the face being verified
- * @param gallery An array of enrolled records, each containing an ID and its 128D embedding
- * @param threshold The confidence threshold (default is 0.80 for MobileFaceNet)
- * @returns The best matching record with its confidence score, or null if no match exceeds threshold
- */
-export interface GalleryItem {
-  id: string;
-  name: string;
-  employeeId: string;
-  department: string;
-  embedding: number[];
 }
 
 export interface MatchResult {
@@ -51,6 +34,9 @@ export interface MatchResult {
   similarity: number;
 }
 
+/**
+ * Finds the best match in the gallery for a given face embedding.
+ */
 export function findBestMatch(
   probeEmbedding: number[],
   gallery: GalleryItem[],

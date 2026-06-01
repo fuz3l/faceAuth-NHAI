@@ -1,5 +1,5 @@
-import { calculateCosineSimilarity, findBestMatch, GalleryItem } from '../src/utils/matching';
-import { calculateAverageEAR, calculateHeadYawRatio, Landmark } from '../src/utils/liveness';
+import { calculateCosineSimilarity, findBestMatch, GalleryItem } from '../src/utils/faceMatch';
+import { calculateAverageEAR, calculateHeadYawRatio, Landmark } from '../src/utils/livenessLogic';
 
 describe('Face Embedding Matching (Cosine Similarity)', () => {
   it('should return 1.0 for identical vectors', () => {
