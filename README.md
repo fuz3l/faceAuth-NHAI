@@ -1,97 +1,127 @@
-This is a new [**React Native**](https://reactnative.dev) project, bootstrapped using [`@react-native-community/cli`](https://github.com/react-native-community/cli).
+# DatalakeFaceAuth - Offline Facial Recognition & Liveness System
 
-# Getting Started
+DatalakeFaceAuth is a React Native CLI (no Expo) application designed for government field personnel (NHAI) to perform secure, fully offline biometric verification and liveness checks.
 
-> **Note**: Make sure you have completed the [Set Up Your Environment](https://reactnative.dev/docs/set-up-your-environment) guide before proceeding.
+---
 
-## Step 1: Start Metro
+## Key System Features
 
-First, you will need to run **Metro**, the JavaScript build tool for React Native.
+*   **100% Offline Matching**: Compares 128-dimensional face embedding vectors against locally stored personnel credentials in a local SQLite datastore.
+*   **Real-time Biometric Liveness Heuristics**: 
+    *   **Eye Aspect Ratio (EAR)**: Captures eye blinks to confirm live status.
+    *   **Head Turn Ratio (Yaw Heuristics)**: Tracks horizontal movement of the nose relative to cheek boundaries (no separate liveness model required).
+*   **Dual TFLite Pipelines**:
+    *   **MediaPipe Face Mesh (TFLite)**: Extracts 468 3D landmarks for liveness.
+    *   **MobileFaceNet (TFLite)**: Generates 128D embeddings from cropped, aligned face images.
+*   **Local SQLite Storage**: Local audit trails of scans, enrolled personnel, and pending synchronization records.
+*   **AWS Sync Architecture**: Complete delta replication design (documented in [AWS_SYNC_ARCHITECTURE.md](AWS_SYNC_ARCHITECTURE.md)).
+*   **Under 20MB Footprint**: Achieved by bypassing heavy framework overlays (like Skia or Reanimated) and integrating direct, native Android (Kotlin/CameraX) and iOS (Swift/AVFoundation) camera/TFLite bridges.
 
-To start the Metro dev server, run the following command from the root of your React Native project:
+---
 
-```sh
-# Using npm
-npm start
+## 🛠️ Prerequisites & Local Setup
 
-# OR using Yarn
-yarn start
+Make sure your machine is configured for React Native CLI development.
+
+### 1. System Requirements
+*   **Node.js**: `v20.x` or newer (recommended `v20.19.x` or `v22.x`)
+*   **CocoaPods** (for iOS builds)
+*   **Java Development Kit (JDK 17)**: 
+    *   On macOS, install via Homebrew:
+        ```bash
+        brew install --cask zulu@17
+        ```
+    *   Configure your environment profile (`~/.zshrc`):
+        ```bash
+        export JAVA_HOME=$(/usr/libexec/java_home -v 17)
+        ```
+        Then reload the terminal shell: `source ~/.zshrc`
+
+### 2. Project Installation
+Clone the repository and install dependency bundles:
+```bash
+npm install
 ```
 
-## Step 2: Build and run your app
+### 3. Native Configuration Files
 
-With Metro running, open a new terminal window/pane from the root of your React Native project, and use one of the following commands to build and run your Android or iOS app:
-
-### Android
-
-```sh
-# Using npm
-npm run android
-
-# OR using Yarn
-yarn android
+#### Android SDK Setup
+Create a file named `local.properties` inside the `android/` directory:
+```properties
+# android/local.properties
+sdk.dir=/Users/YOUR_MAC_USERNAME/Library/Android/sdk
 ```
+*(Replace `YOUR_MAC_USERNAME` with your actual macOS username)*
 
-### iOS
-
-For iOS, remember to install CocoaPods dependencies (this only needs to be run on first clone or after updating native deps).
-
-The first time you create a new project, run the Ruby bundler to install CocoaPods itself:
-
-```sh
+#### iOS CocoaPods Setup
+Install iOS pods using Bundler (makes sure versions are identical):
+```bash
+cd ios
 bundle install
-```
-
-Then, and every time you update your native dependencies, run:
-
-```sh
 bundle exec pod install
+cd ..
 ```
 
-For more information, please visit [CocoaPods Getting Started guide](https://guides.cocoapods.org/using/getting-started.html).
+---
 
-```sh
-# Using npm
+## 🚀 Running the App Locally
+
+### Step 1: Start Metro Bundler
+Start the JavaScript packager:
+```bash
+npm start
+```
+
+### Step 2: Build & Deploy
+
+#### Android Development
+Deploy the debug APK to a connected physical device or emulator:
+```bash
+npm run android
+```
+
+#### iOS Development
+Deploy to the iOS Simulator or device:
+```bash
 npm run ios
-
-# OR using Yarn
-yarn ios
 ```
 
-If everything is set up correctly, you should see your new app running in the Android Emulator, iOS Simulator, or your connected device.
+---
 
-This is one way to run your app — you can also build it directly from Android Studio or Xcode.
+## 🧪 Simulation / Sandbox Mode (Emulator-Friendly)
 
-## Step 3: Modify your app
+By default, TFLite model execution and camera streaming require a physical device. To allow easy testing on standard Android/iOS emulators, the app includes a **Simulation Sandbox**:
+*   If the app detects it is running on a simulator or if the model weights (`face_landmark.tflite` and `mobilefacenet.tflite` in `assets` / bundles) are missing/placeholder files, the custom Camera view **automatically switches to Simulator Mode**.
+*   This mode synthesizes realistic facial landmarks and updates the UI through liveness gestures step-by-step:
+    1.  *Look Center* (aligns face)
+    2.  *Blink Eyes* (simulates EAR dropping)
+    3.  *Turn Head Left* (simulates left yaw shift)
+    4.  *Turn Head Right* (simulates right yaw shift)
+    5.  *Access Granted / Denied* (emits a mock face embedding vector)
+*   **For Production**: Replace the placeholder files under `android/app/src/main/assets/` and `ios/` with your actual trained TFLite models. The native view will automatically detect them and switch to live real-time camera inference.
 
-Now that you have successfully run the app, let's make changes!
+---
 
-Open `App.tsx` in your text editor of choice and make some changes. When you save, your app will automatically update and reflect these changes — this is powered by [Fast Refresh](https://reactnative.dev/docs/fast-refresh).
+## 📁 Codebase Directory Layout
 
-When you want to forcefully reload, for example to reset the state of your app, you can perform a full reload:
+*   [`src/App.tsx`](src/App.tsx): Main application wrapper, state-based screen routes, and UI stylesheet.
+*   [`src/database/database.ts`](src/database/database.ts): Offline SQLite service handling DB tables, CRUD operations, and matching queries.
+*   [`src/components/FaceCamera.tsx`](src/components/FaceCamera.tsx): React Component bridging native iOS/Android camera views.
+*   [`src/utils/liveness.ts`](src/utils/liveness.ts): Mathematical helper functions to compute Eye Aspect Ratio (EAR) and Head Yaw ratio.
+*   [`src/utils/matching.ts`](src/utils/matching.ts): Math routines calculating Cosine Similarity `(A . B) / (||A|| * ||B||)`.
+*   [`android/app/src/main/java/com/datalakefaceauth/`](android/app/src/main/java/com/datalakefaceauth/):
+    *   `FaceCaptureView.kt`: Custom CameraX preview view, TFLite execution, liveness state machine, and canvas overlays.
+    *   `FaceCaptureViewManager.kt`: Bridges view properties/events (onFaceProcessed, onLivenessUpdate, onStatusMessage).
+*   [`ios/DatalakeFaceAuth/`](ios/DatalakeFaceAuth/):
+    *   `FaceCaptureView.swift`: UIKit AVCaptureSession camera delegate running liveness calculations, drawing overlays, and mapping events.
+    *   `FaceCaptureViewManager.swift` & `.m`: Objective-C mapping layers.
 
-- **Android**: Press the <kbd>R</kbd> key twice or select **"Reload"** from the **Dev Menu**, accessed via <kbd>Ctrl</kbd> + <kbd>M</kbd> (Windows/Linux) or <kbd>Cmd ⌘</kbd> + <kbd>M</kbd> (macOS).
-- **iOS**: Press <kbd>R</kbd> in iOS Simulator.
+---
 
-## Congratulations! :tada:
+## 🧪 Running Unit Tests
 
-You've successfully run and modified your React Native App. :partying_face:
-
-### Now what?
-
-- If you want to add this new React Native code to an existing application, check out the [Integration guide](https://reactnative.dev/docs/integration-with-existing-apps).
-- If you're curious to learn more about React Native, check out the [docs](https://reactnative.dev/docs/getting-started).
-
-# Troubleshooting
-
-If you're having issues getting the above steps to work, see the [Troubleshooting](https://reactnative.dev/docs/troubleshooting) page.
-
-# Learn More
-
-To learn more about React Native, take a look at the following resources:
-
-- [React Native Website](https://reactnative.dev) - learn more about React Native.
-- [Getting Started](https://reactnative.dev/docs/environment-setup) - an **overview** of React Native and how setup your environment.
-- [Learn the Basics](https://reactnative.dev/docs/getting-started) - a **guided tour** of the React Native **basics**.
-- [Blog](https://reactnative.dev/blog) - read the latest official React Native **Blog** posts.
-- [`@facebook/react-native`](https://github.com/facebook/react-native) - the Open Source; GitHub **repository** for React Native.
+To run Jest unit tests testing the mathematical calculations:
+```bash
+npm run test
+```
+*(Runs similarity verification and EAR threshold checks)*
