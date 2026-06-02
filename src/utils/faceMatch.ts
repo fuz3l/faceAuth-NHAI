@@ -1,4 +1,5 @@
 import { GalleryItem } from '../database/storage';
+export type { GalleryItem };
 
 /**
  * Calculates the cosine similarity between two 128-dimensional face embedding vectors.

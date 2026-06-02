@@ -52,13 +52,32 @@ jest.mock('@react-native-community/netinfo', () => {
   };
 });
 
-// Mock react-native-vision-camera
 jest.mock('react-native-vision-camera', () => {
   return {
     Camera: {
       requestCameraPermission: jest.fn(() => Promise.resolve('granted')),
+      getCameraPermissionStatus: jest.fn(() => Promise.resolve('granted')),
     },
-    useCameraDevices: jest.fn(() => []),
+    useCameraDevice: jest.fn(() => ({})),
+    useFrameProcessor: jest.fn(() => jest.fn()),
+  };
+});
+
+jest.mock('react-native-worklets-core', () => {
+  return {
+    useRunOnJS: jest.fn((fn) => fn),
+    Worklets: {
+      createRunOnJS: jest.fn((fn) => fn),
+    },
+  };
+});
+
+jest.mock('react-native-svg', () => {
+  const React = require('react');
+  return {
+    __esModule: true,
+    default: jest.fn(({ children }) => React.createElement('Svg', null, children)),
+    Rect: jest.fn(() => React.createElement('Rect', null)),
   };
 });
 
