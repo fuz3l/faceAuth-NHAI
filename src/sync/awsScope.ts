@@ -4,7 +4,13 @@
  */
 
 import NetInfo from '@react-native-community/netinfo';
-import { getAllPersonnel, getScanLogsHistory } from '../database/storage';
+import {
+  getAllPersonnel,
+  getScanLogsHistory,
+  getUnsyncedAttendance,
+  markAttendanceAsSynced,
+  purgeSyncedAttendance,
+} from '../database/storage';
 
 export interface SyncStatus {
   lastSyncTime: string | null;
@@ -78,4 +84,63 @@ export async function syncPushToAWS(): Promise<{ success: boolean; pushedCount: 
 
   console.log('[AWS Sync] Push completed. Local datastore marked SYNCED.');
   return { success: true, pushedCount: pendingLogs.length };
+}
+
+/**
+ * Commented-out scope function demonstrating how offline attendance sync would run when network is restored.
+ */
+export async function syncAttendanceToAWS(): Promise<{ success: boolean; syncedCount: number }> {
+  /*
+  // 1. Detect network connection status using NetInfo
+  const isOnline = await checkNetworkStatus();
+  if (!isOnline) {
+    console.log('[AWS Sync] Device is offline. Attendance synchronization aborted.');
+    return { success: false, syncedCount: 0 };
+  }
+
+  // 2. Fetch all unsynced attendance records from the local SQLite table
+  const unsyncedRecords = getUnsyncedAttendance();
+  if (unsyncedRecords.length === 0) {
+    console.log('[AWS Sync] No unsynced attendance records to synchronize.');
+    return { success: true, syncedCount: 0 };
+  }
+
+  console.log(`[AWS Sync] Found ${unsyncedRecords.length} unsynced attendance logs. Starting POST...`);
+
+  try {
+    // 3. POST the records to the AWS API Gateway endpoint
+    // Placeholder URL used for structural demonstration:
+    const response = await fetch('https://api.datalake.nhai.gov/prod/attendance/sync', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer <COGNITO_JWT_TOKEN>'
+      },
+      body: JSON.stringify({ attendance: unsyncedRecords })
+    });
+
+    if (!response.ok) {
+      throw new Error(`AWS Sync API endpoint returned error status: ${response.status}`);
+    }
+
+    // 4. Extract successfully synchronized record IDs
+    const syncedIds = unsyncedRecords.map(record => record.id);
+
+    // 5. Mark the successfully uploaded records as synced in SQLite database (synced = 1)
+    markAttendanceAsSynced(syncedIds);
+    console.log(`[AWS Sync] Marked ${syncedIds.length} attendance records as synced.`);
+
+    // 6. Purge the synced records from the local SQLite storage to free up offline device memory
+    purgeSyncedAttendance();
+    console.log('[AWS Sync] Purged synced attendance records from local storage.');
+
+    return { success: true, syncedCount: syncedIds.length };
+  } catch (error) {
+    console.error('[AWS Sync] Failed to sync attendance to AWS:', error);
+    return { success: false, syncedCount: 0 };
+  }
+  */
+
+  // Return non-functional stub results for scope constraints
+  return { success: false, syncedCount: 0 };
 }

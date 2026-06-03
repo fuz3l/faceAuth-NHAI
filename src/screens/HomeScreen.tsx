@@ -4,25 +4,19 @@ import {
   Text,
   View,
   TouchableOpacity,
+  SafeAreaView,
+  StatusBar,
   ScrollView,
-  Alert,
-  TextInput,
 } from 'react-native';
 import { useNavigation, useIsFocused } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
-import {
-  getDashboardStats,
-  getAllPersonnel,
-  deletePersonnel,
-  initDatabase,
-  GalleryItem,
-} from '../database/storage';
-import { checkNetworkStatus } from '../sync/awsScope';
+import Svg, { Path } from 'react-native-svg';
+import { getRegisteredUsersCount, initDatabase } from '../database/storage';
 
 type RootStackParamList = {
   Home: undefined;
   Camera: { mode: 'ENROL' | 'VERIFY'; name?: string; empId?: string; dept?: string };
-  Result: { status: 'SUCCESS' | 'FAILED_LIVENESS' | 'UNKNOWN_FACE'; matchDetail?: any; confidence?: number };
+  Register: undefined;
 };
 
 type HomeScreenNavigationProp = StackNavigationProp<RootStackParamList, 'Home'>;
@@ -30,397 +24,283 @@ type HomeScreenNavigationProp = StackNavigationProp<RootStackParamList, 'Home'>;
 export const HomeScreen: React.FC = () => {
   const navigation = useNavigation<HomeScreenNavigationProp>();
   const isFocused = useIsFocused();
-
-  // Database Stats
-  const [stats, setStats] = useState({ totalEnrolled: 0, totalLogs: 0, pendingSync: 0 });
-  const [personnel, setPersonnel] = useState<GalleryItem[]>([]);
-  const [isOnline, setIsOnline] = useState(false);
-
-  // Form Inputs for Enrolment
-  const [enrolName, setEnrolName] = useState('');
-  const [enrolEmpId, setEnrolEmpId] = useState('');
-  const [enrolDept, setEnrolDept] = useState('');
-  const [showEnrolForm, setShowEnrolForm] = useState(false);
+  const [userCount, setUserCount] = useState(0);
 
   useEffect(() => {
-    initDatabase();
-    loadDashboardData();
+    if (isFocused) {
+      try {
+        initDatabase();
+        const count = getRegisteredUsersCount();
+        setUserCount(count);
+      } catch (error) {
+        console.warn('Failed to load user count on Home:', error);
+      }
+    }
   }, [isFocused]);
 
-  const loadDashboardData = async () => {
-    try {
-      const dbStats = getDashboardStats();
-      setStats(dbStats);
-
-      const gallery = getAllPersonnel();
-      setPersonnel(gallery);
-
-      const netStatus = await checkNetworkStatus();
-      setIsOnline(netStatus);
-    } catch (error) {
-      console.warn('Failed to load dashboard:', error);
-    }
-  };
-
-  const handleStartVerify = () => {
-    if (personnel.length === 0) {
-      Alert.alert(
-        'Empty gallery database',
-        'Please enroll a field personnel member before initiating biometric verification.'
-      );
-      return;
-    }
-    navigation.navigate('Camera', { mode: 'VERIFY' });
-  };
-
-  const handleStartEnrol = () => {
-    if (!enrolName.trim() || !enrolEmpId.trim() || !enrolDept.trim()) {
-      Alert.alert('Form Error', 'Please complete Name, Employee ID, and Department.');
-      return;
-    }
-    // Navigate to camera screen passing form states
-    navigation.navigate('Camera', {
-      mode: 'ENROL',
-      name: enrolName.trim(),
-      empId: enrolEmpId.trim().toUpperCase(),
-      dept: enrolDept.trim(),
-    });
-
-    // Reset Form
-    setEnrolName('');
-    setEnrolEmpId('');
-    setEnrolDept('');
-    setShowEnrolForm(false);
-  };
-
-  const handleDeleteRecord = (id: string, name: string) => {
-    Alert.alert(
-      'Confirm Deletion',
-      `Are you sure you want to delete ${name} from local datastore?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () => {
-            deletePersonnel(id);
-            loadDashboardData();
-          },
-        },
-      ]
-    );
-  };
-
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
-      {/* Top Header Section */}
-      <View style={styles.header}>
-        <View>
-          <Text style={styles.headerTitle}>DATALAKE OFF-LINE</Text>
-          <Text style={styles.headerSubtitle}>NHAI Security Facial Matcher</Text>
-        </View>
-        <View style={styles.statusBadge}>
-          <View style={[styles.statusDot, isOnline ? styles.onlineDot : styles.offlineDot]} />
-          <Text style={styles.statusText}>{isOnline ? 'CLOUD CONNECT' : 'OFFLINE ACTIVE'}</Text>
-        </View>
-      </View>
-
-      {/* Aggregate Stats Row */}
-      <View style={styles.statsRow}>
-        <View style={styles.statCard}>
-          <Text style={styles.statLabel}>ENROLLED</Text>
-          <Text style={styles.statNumber}>{stats.totalEnrolled}</Text>
-        </View>
-        <View style={styles.statCard}>
-          <Text style={styles.statLabel}>AUDIT LOGS</Text>
-          <Text style={styles.statNumber}>{stats.totalLogs}</Text>
-        </View>
-        <View style={[styles.statCard, stats.pendingSync > 0 ? styles.alertBorder : null]}>
-          <Text style={styles.statLabel}>PENDING SYNC</Text>
-          <Text style={[styles.statNumber, stats.pendingSync > 0 ? styles.alertText : null]}>
-            {stats.pendingSync}
-          </Text>
-        </View>
-      </View>
-
-      {/* Main Operations Block */}
-      <View style={styles.actionBlock}>
-        <TouchableOpacity style={styles.scanButton} onPress={handleStartVerify}>
-          <Text style={styles.scanButtonText}>✓ START SCAN & VERIFY</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity 
-          style={styles.toggleEnrolButton} 
-          onPress={() => setShowEnrolForm(!showEnrolForm)}
-        >
-          <Text style={styles.toggleEnrolButtonText}>
-            {showEnrolForm ? '✕ Close Registration Form' : '+ Register New Personnel'}
-          </Text>
-        </TouchableOpacity>
-
-        {showEnrolForm && (
-          <View style={styles.enrolForm}>
-            <Text style={styles.formHeader}>Personnel Details</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Full Name"
-              placeholderTextColor="#64748B"
-              value={enrolName}
-              onChangeText={setEnrolName}
-            />
-            <TextInput
-              style={styles.input}
-              placeholder="Employee ID"
-              placeholderTextColor="#64748B"
-              value={enrolEmpId}
-              onChangeText={setEnrolEmpId}
-              autoCapitalize="characters"
-            />
-            <TextInput
-              style={styles.input}
-              placeholder="Department"
-              placeholderTextColor="#64748B"
-              value={enrolDept}
-              onChangeText={setEnrolDept}
-            />
-            <TouchableOpacity style={styles.submitEnrolButton} onPress={handleStartEnrol}>
-              <Text style={styles.submitEnrolButtonText}>Open Enrolment Camera</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-      </View>
-
-      {/* Enrolled Personnel List */}
-      <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>Local Gallery Records</Text>
-      </View>
-
-      {personnel.length === 0 ? (
-        <View style={styles.emptyCard}>
-          <Text style={styles.emptyText}>No personnel records enrolled yet.</Text>
-        </View>
-      ) : (
-        personnel.map((person) => (
-          <View key={person.id} style={styles.personRow}>
-            <View>
-              <Text style={styles.personName}>{person.name}</Text>
-              <Text style={styles.personMeta}>
-                ID: {person.employeeId} • Dept: {person.department}
-              </Text>
+    <SafeAreaView style={styles.container}>
+      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+      <ScrollView contentContainerStyle={styles.scrollContent}>
+        
+        {/* Header Branding Section */}
+        <View style={styles.headerSection}>
+          <Text style={styles.appTitle}>DatalakeFaceAuth</Text>
+          <View style={styles.badgeRow}>
+            <Text style={styles.govtText}>National Highways Authority of India</Text>
+            <View style={styles.mapBadge}>
+              <Text style={styles.mapBadgeText}>📍 Gateway Node 01</Text>
             </View>
-            <TouchableOpacity 
-              style={styles.deleteBtn}
-              onPress={() => handleDeleteRecord(person.id, person.name)}
+          </View>
+        </View>
+
+        {/* Status Tab / Pills Row (Inspired by Total Defects tab buttons) */}
+        <View style={styles.pillsRow}>
+          <View style={[styles.pill, styles.pillActive]}>
+            <Text style={styles.pillActiveText}>Active Users {userCount}</Text>
+          </View>
+          <View style={[styles.pill, styles.pillOutline]}>
+            <Text style={styles.pillOutlineText}>Secure Offline Mode</Text>
+          </View>
+        </View>
+
+        {/* Action Panel Container (Inspired by Help topics list card) */}
+        <View style={styles.sectionContainer}>
+          <Text style={styles.sectionHeader}>Biometric Actions</Text>
+          
+          <View style={styles.listCard}>
+            {/* Action 1: Authenticate Face */}
+            <TouchableOpacity
+              style={[styles.listItem, styles.listDivider]}
+              onPress={() => navigation.navigate('Camera', { mode: 'VERIFY' })}
             >
-              <Text style={styles.deleteBtnText}>✕</Text>
+              <View style={styles.listItemLeft}>
+                <View style={[styles.iconCircle, styles.primaryIconBg]}>
+                  <Text style={styles.itemIcon}>🛡️</Text>
+                </View>
+                <Text style={styles.itemLabel}>Authenticate</Text>
+              </View>
+              <Text style={styles.chevron}>›</Text>
+            </TouchableOpacity>
+
+            {/* Action 2: Register New User */}
+            <TouchableOpacity
+              style={styles.listItem}
+              onPress={() => navigation.navigate('Register')}
+            >
+              <View style={styles.listItemLeft}>
+                <View style={[styles.iconCircle, styles.secondaryIconBg]}>
+                  <Text style={styles.itemIcon}>📝</Text>
+                </View>
+                <Text style={styles.itemLabel}>Register New User</Text>
+              </View>
+              <Text style={styles.chevron}>›</Text>
             </TouchableOpacity>
           </View>
-        ))
-      )}
-    </ScrollView>
+        </View>
+
+        {/* Help / Secondary Actions Row (Inspired by Ask us / Mail us cards) */}
+        <View style={styles.helpRow}>
+          <TouchableOpacity style={styles.helpCard}>
+            <Text style={styles.helpCardIcon}>❓</Text>
+            <Text style={styles.helpCardText}>Ask Info</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.helpCard}>
+            <Text style={styles.helpCardIcon}>⚙️</Text>
+            <Text style={styles.helpCardText}>Diagnostics</Text>
+          </TouchableOpacity>
+        </View>
+      </ScrollView>
+
+      {/* Official Government style footer */}
+      <View style={styles.footer}>
+        <Text style={styles.footerText}>NHAI SECURE TERMINAL GATEWAY V1.0</Text>
+      </View>
+    </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0F172A',
+    backgroundColor: '#F8FAFC', // Light background
   },
   scrollContent: {
-    paddingHorizontal: 16,
-    paddingTop: 20,
-    paddingBottom: 40,
+    paddingHorizontal: 20,
+    paddingTop: 24,
+    paddingBottom: 30,
   },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+  headerSection: {
     marginBottom: 20,
   },
-  headerTitle: {
-    color: '#FFFFFF',
-    fontSize: 18,
-    fontWeight: '800',
-    letterSpacing: 1.2,
+  appTitle: {
+    color: '#0F172A', // Slate black
+    fontSize: 26,
+    fontWeight: '900',
+    letterSpacing: -0.5,
   },
-  headerSubtitle: {
-    color: '#64748B',
-    fontSize: 11,
-    fontWeight: '500',
-  },
-  statusBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#1E293B',
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: 20,
-  },
-  statusDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    marginRight: 6,
-  },
-  onlineDot: {
-    backgroundColor: '#3B82F6',
-  },
-  offlineDot: {
-    backgroundColor: '#10B981',
-  },
-  statusText: {
-    color: '#FFFFFF',
-    fontSize: 9,
-    fontWeight: '700',
-  },
-  statsRow: {
+  badgeRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 22,
-  },
-  statCard: {
-    flex: 1,
-    backgroundColor: '#1E293B',
-    borderWidth: 1,
-    borderColor: '#334155',
-    borderRadius: 12,
-    paddingVertical: 14,
     alignItems: 'center',
-    marginHorizontal: 3,
+    marginTop: 6,
   },
-  alertBorder: {
-    borderColor: '#F59E0B',
-  },
-  statLabel: {
-    color: '#64748B',
-    fontSize: 9,
+  govtText: {
+    color: '#64748B', // Steel grey
+    fontSize: 11,
     fontWeight: '700',
-    marginBottom: 4,
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
   },
-  statNumber: {
-    color: '#FFFFFF',
-    fontSize: 20,
+  mapBadge: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1.2,
+    borderColor: '#E2E8F0',
+    borderRadius: 20,
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+  },
+  mapBadgeText: {
+    color: '#134074',
+    fontSize: 10,
     fontWeight: '800',
   },
-  alertText: {
-    color: '#F59E0B',
-  },
-  actionBlock: {
+  pillsRow: {
+    flexDirection: 'row',
     marginBottom: 26,
   },
-  scanButton: {
-    backgroundColor: '#10B981',
-    borderRadius: 12,
-    paddingVertical: 16,
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  scanButtonText: {
-    color: '#0F172A',
-    fontSize: 14,
-    fontWeight: '800',
-    letterSpacing: 0.5,
-  },
-  toggleEnrolButton: {
-    borderWidth: 1.5,
-    borderColor: '#334155',
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
-  toggleEnrolButtonText: {
-    color: '#94A3B8',
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  enrolForm: {
-    backgroundColor: '#1E293B',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#334155',
-    padding: 16,
-    marginTop: 10,
-  },
-  formHeader: {
-    color: '#FFFFFF',
-    fontSize: 13,
-    fontWeight: '700',
-    marginBottom: 12,
-  },
-  input: {
-    backgroundColor: '#0F172A',
-    borderWidth: 1,
-    borderColor: '#334155',
+  pill: {
     borderRadius: 8,
-    paddingHorizontal: 12,
     paddingVertical: 10,
-    color: '#FFFFFF',
-    fontSize: 14,
-    marginBottom: 10,
-  },
-  submitEnrolButton: {
-    backgroundColor: '#3B82F6',
-    borderRadius: 8,
-    paddingVertical: 12,
+    paddingHorizontal: 16,
+    marginRight: 10,
     alignItems: 'center',
-    marginTop: 4,
+    justifyContent: 'center',
   },
-  submitEnrolButtonText: {
+  pillActive: {
+    backgroundColor: '#0A2545', // Deep Navy Active
+  },
+  pillActiveText: {
     color: '#FFFFFF',
     fontSize: 13,
     fontWeight: '800',
   },
-  sectionHeader: {
-    marginBottom: 12,
+  pillOutline: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
   },
-  sectionTitle: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  emptyCard: {
-    backgroundColor: '#1E293B',
-    borderWidth: 1,
-    borderColor: '#334155',
-    borderStyle: 'dashed',
-    borderRadius: 12,
-    paddingVertical: 34,
-    alignItems: 'center',
-  },
-  emptyText: {
+  pillOutlineText: {
     color: '#64748B',
     fontSize: 13,
-    fontWeight: '500',
+    fontWeight: '700',
   },
-  personRow: {
+  sectionContainer: {
+    marginBottom: 24,
+  },
+  sectionHeader: {
+    color: '#1A1C1E',
+    fontSize: 15,
+    fontWeight: '800',
+    marginBottom: 12,
+  },
+  listCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  listItem: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: '#1E293B',
-    borderWidth: 1,
-    borderColor: '#334155',
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    marginBottom: 8,
+    paddingVertical: 16,
+    paddingHorizontal: 20,
   },
-  personName: {
-    color: '#FFFFFF',
-    fontSize: 14,
+  listDivider: {
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+  },
+  listItemLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  iconCircle: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 14,
+  },
+  primaryIconBg: {
+    backgroundColor: '#EEF2F6',
+  },
+  secondaryIconBg: {
+    backgroundColor: '#F5F5F7',
+  },
+  itemIcon: {
+    fontSize: 18,
+  },
+  itemLabel: {
+    color: '#0F172A',
+    fontSize: 14.5,
     fontWeight: '700',
   },
-  personMeta: {
-    color: '#94A3B8',
-    fontSize: 11,
-    marginTop: 2,
+  chevron: {
+    color: '#CBD5E1',
+    fontSize: 22,
+    fontWeight: '600',
   },
-  deleteBtn: {
-    padding: 8,
+  helpRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
   },
-  deleteBtnText: {
-    color: '#EF4444',
-    fontSize: 14,
+  helpCard: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    paddingVertical: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginHorizontal: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 1.5,
+  },
+  helpCardIcon: {
+    fontSize: 20,
+    marginBottom: 8,
+  },
+  helpCardText: {
+    color: '#0F172A',
+    fontSize: 12.5,
     fontWeight: '800',
   },
+  footer: {
+    alignItems: 'center',
+    paddingBottom: 20,
+    paddingTop: 10,
+    backgroundColor: '#F8FAFC',
+    borderTopWidth: 1,
+    borderTopColor: '#E2E8F0',
+  },
+  footerText: {
+    color: '#94A3B8',
+    fontSize: 9.5,
+    fontWeight: '700',
+    letterSpacing: 0.8,
+  },
 });
+
 export default HomeScreen;

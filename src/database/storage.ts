@@ -63,6 +63,27 @@ export function initDatabase(): void {
       );
     `);
 
+    // Create Users table
+    db.execute(`
+      CREATE TABLE IF NOT EXISTS users (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        embedding TEXT NOT NULL,
+        registeredAt TEXT NOT NULL
+      );
+    `);
+
+    // Create Attendance table
+    db.execute(`
+      CREATE TABLE IF NOT EXISTS attendance (
+        id TEXT PRIMARY KEY,
+        userId TEXT NOT NULL,
+        timestamp TEXT NOT NULL,
+        status TEXT NOT NULL,
+        synced INTEGER DEFAULT 0
+      );
+    `);
+
     console.log('react-native-quick-sqlite database initialized successfully.');
   } catch (error) {
     console.error('Failed to initialize database via quick-sqlite:', error);
@@ -231,4 +252,137 @@ export function getDashboardStats(): {
     totalLogs,
     pendingSync,
   };
+}
+
+export interface User {
+  id: string;
+  name: string;
+  embedding: number[];
+  registeredAt: string;
+}
+
+/**
+ * Registers a new user.
+ */
+export function registerUser(name: string, embedding: number[]): User {
+  const database = getDb();
+  const id = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+  const registeredAt = new Date().toISOString();
+  const embeddingStr = JSON.stringify(embedding);
+
+  database.execute(
+    `INSERT INTO users (id, name, embedding, registeredAt)
+     VALUES (?, ?, ?, ?);`,
+    [id, name, embeddingStr, registeredAt]
+  );
+
+  return { id, name, embedding, registeredAt };
+}
+
+/**
+ * Retrieves all registered users from the SQLite database.
+ */
+export function getAllUsers(): User[] {
+  const database = getDb();
+  const result = database.execute('SELECT id, name, embedding, registeredAt FROM users;');
+  const list: User[] = [];
+
+  const rows = result.rows;
+  if (rows) {
+    const len = rows.length;
+    for (let i = 0; i < len; i++) {
+      const row = rows.item(i);
+      try {
+        list.push({
+          id: row.id,
+          name: row.name,
+          embedding: JSON.parse(row.embedding),
+          registeredAt: row.registeredAt,
+        });
+      } catch (e) {
+        console.error('Failed to parse embedding for user', row.id, e);
+      }
+    }
+  }
+  return list;
+}
+
+export interface AttendanceLog {
+  id: string;
+  userId: string;
+  timestamp: string;
+  status: string;
+  synced: boolean;
+}
+
+/**
+ * Logs a user's attendance status.
+ */
+export function saveAttendanceLog(userId: string, status: string): string {
+  const database = getDb();
+  const id = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+  const timestamp = new Date().toISOString();
+
+  database.execute(
+    `INSERT INTO attendance (id, userId, timestamp, status, synced)
+     VALUES (?, ?, ?, ?, 0);`,
+    [id, userId, timestamp, status]
+  );
+
+  return id;
+}
+
+/**
+ * Fetches all unsynced attendance records (synced = 0).
+ */
+export function getUnsyncedAttendance(): AttendanceLog[] {
+  const database = getDb();
+  const result = database.execute('SELECT id, userId, timestamp, status, synced FROM attendance WHERE synced = 0;');
+  const list: AttendanceLog[] = [];
+
+  const rows = result.rows;
+  if (rows) {
+    const len = rows.length;
+    for (let i = 0; i < len; i++) {
+      const row = rows.item(i);
+      list.push({
+        id: row.id,
+        userId: row.userId,
+        timestamp: row.timestamp,
+        status: row.status,
+        synced: row.synced === 1,
+      });
+    }
+  }
+  return list;
+}
+
+/**
+ * Marks given attendance record IDs as synced (synced = 1) in the local database.
+ */
+export function markAttendanceAsSynced(ids: string[]): void {
+  if (ids.length === 0) return;
+  const database = getDb();
+  const placeholders = ids.map(() => '?').join(',');
+  database.execute(
+    `UPDATE attendance SET synced = 1 WHERE id IN (${placeholders});`,
+    ids
+  );
+}
+
+/**
+ * Deletes all attendance records that have been successfully synced (synced = 1).
+ */
+export function purgeSyncedAttendance(): void {
+  const database = getDb();
+  database.execute('DELETE FROM attendance WHERE synced = 1;');
+}
+
+/**
+ * Returns the total count of registered users in the SQLite users table.
+ */
+export function getRegisteredUsersCount(): number {
+  const database = getDb();
+  const result = database.execute('SELECT COUNT(*) as count FROM users;');
+  return result.rows?.item(0)?.count || 0;
 }

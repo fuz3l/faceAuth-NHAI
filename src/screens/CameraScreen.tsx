@@ -18,6 +18,8 @@ import Svg, { Rect } from 'react-native-svg';
 import { Landmark } from '../utils/livenessLogic';
 import { initializeFaceMeshModel, detectFaceFromFrame, FaceDetector } from '../components/FaceDetector';
 import LivenessCheck from '../components/LivenessCheck';
+import { registerUser, getAllUsers } from '../database/storage';
+import { generateFaceEmbedding, calculateCosineSimilarity } from '../utils/faceMatch';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const CIRCLE_SIZE = SCREEN_WIDTH * 0.72;
@@ -26,7 +28,12 @@ const TOP_OFFSET = (SCREEN_HEIGHT - CIRCLE_SIZE) / 2 - 40;
 type RootStackParamList = {
   Home: undefined;
   Camera: { mode: 'ENROL' | 'VERIFY'; name?: string; empId?: string; dept?: string };
-  Result: { status: 'SUCCESS' | 'FAILED_LIVENESS' | 'UNKNOWN_FACE'; matchDetail?: any; confidence?: number };
+  Result: { 
+    status: 'SUCCESS' | 'FAILED_LIVENESS' | 'UNKNOWN_FACE'; 
+    matchDetail?: { id: string; name: string; timestamp?: string }; 
+    confidence?: number;
+    timestamp?: string; 
+  };
 };
 
 type CameraScreenRouteProp = RouteProp<RootStackParamList, 'Camera'>;
@@ -156,28 +163,102 @@ export const CameraScreen: React.FC = () => {
     navigation.navigate('Home');
   };
 
-  const handleLivenessConfirmed = () => {
+  const handleLivenessConfirmed = async () => {
     setIsActive(false);
-    Alert.alert(
-      'Liveness Verified',
-      'Biometric liveness checks passed. Proceeding with face authentication...',
-      [
-        {
-          text: 'OK',
-          onPress: () => {
-            navigation.navigate('Result', {
-              status: 'SUCCESS',
-              confidence: 0.96,
-              matchDetail: {
-                name: route.params.name || 'Field Officer',
-                employeeId: route.params.empId || 'EMP072',
-                department: route.params.dept || 'Logistics',
+
+    try {
+      // Step 3 — only after liveness is confirmed, run face matching using faceMatch.ts
+      const probeEmbedding = await generateFaceEmbedding('dummy_cropped_face');
+
+      if (route.params.mode === 'ENROL') {
+        const name = route.params.name || 'Enrolled User';
+        const newUser = registerUser(name, probeEmbedding);
+        
+        Alert.alert(
+          'Registration Success',
+          `Successfully registered ${newUser.name}.`,
+          [
+            {
+              text: 'OK',
+              onPress: () => {
+                navigation.navigate('Result', {
+                  status: 'SUCCESS',
+                  confidence: 1.0,
+                  timestamp: newUser.registeredAt,
+                  matchDetail: {
+                    id: newUser.id,
+                    name: newUser.name,
+                    timestamp: newUser.registeredAt,
+                  },
+                });
               },
-            });
-          },
-        },
-      ]
-    );
+            },
+          ]
+        );
+      } else {
+        // mode === 'VERIFY'
+        const users = getAllUsers();
+        
+        let bestMatchUser: any = null;
+        let highestSimilarity = -1.0;
+
+        for (const user of users) {
+          const similarity = calculateCosineSimilarity(probeEmbedding, user.embedding);
+          if (similarity > highestSimilarity) {
+            highestSimilarity = similarity;
+            bestMatchUser = user;
+          }
+        }
+
+        if (bestMatchUser && highestSimilarity > 0.85) {
+          const timestamp = new Date().toISOString();
+          Alert.alert(
+            'Authentication Success',
+            `Match found: ${bestMatchUser.name} (${(highestSimilarity * 100).toFixed(1)}%)`,
+            [
+              {
+                text: 'OK',
+                onPress: () => {
+                  navigation.navigate('Result', {
+                    status: 'SUCCESS',
+                    confidence: highestSimilarity,
+                    timestamp: timestamp,
+                    matchDetail: {
+                      id: bestMatchUser.id,
+                      name: bestMatchUser.name,
+                      timestamp: timestamp,
+                    },
+                  });
+                },
+              },
+            ]
+          );
+        } else {
+          // If no match show 'Face Not Recognised' message
+          Alert.alert(
+            'Authentication Failed',
+            'Face Not Recognised',
+            [
+              {
+                text: 'OK',
+                onPress: () => {
+                  navigation.navigate('Result', {
+                    status: 'UNKNOWN_FACE',
+                  });
+                },
+              },
+            ]
+          );
+        }
+      }
+    } catch (error) {
+      console.error('Error during biometric verification flow:', error);
+      Alert.alert(
+        'System Error',
+        'Biometric verification failed due to an internal error.',
+        [{ text: 'OK', onPress: () => navigation.navigate('Home') }]
+      );
+    }
   };
 
   // Compute Face Bounding Box boundaries dynamically from 468 landmarks
