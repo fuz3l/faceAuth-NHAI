@@ -4,31 +4,7 @@ export interface Landmark {
   z?: number;
 }
 
-// Landmark Indices
-export const LEFT_EYE_INDICES = {
-  outer: 263,
-  inner: 362,
-  v1Top: 385,
-  v1Bot: 380,
-  v2Top: 387,
-  v2Bot: 373,
-};
-
-export const RIGHT_EYE_INDICES = {
-  outer: 33,
-  inner: 133,
-  v1Top: 160,
-  v1Bot: 144,
-  v2Top: 158,
-  v2Bot: 153,
-};
-
-export const HEAD_TURN_INDICES = {
-  noseTip: 4,
-  leftCheek: 234,
-  rightCheek: 454,
-};
-
+// Helper to get 3D Euclidean distance
 function getDistance(p1: Landmark, p2: Landmark): number {
   return Math.sqrt(
     Math.pow(p1.x - p2.x, 2) + Math.pow(p1.y - p2.y, 2) + Math.pow((p1.z || 0) - (p2.z || 0), 2)
@@ -36,11 +12,11 @@ function getDistance(p1: Landmark, p2: Landmark): number {
 }
 
 /**
- * Calculates EAR for one eye.
+ * Calculates Eye Aspect Ratio (EAR) for a single eye.
  */
 export function calculateEyeEAR(
   landmarks: Landmark[],
-  indices: typeof LEFT_EYE_INDICES | typeof RIGHT_EYE_INDICES
+  indices: { outer: number; inner: number; v1Top: number; v1Bot: number; v2Top: number; v2Bot: number }
 ): number {
   const pOuter = landmarks[indices.outer];
   const pInner = landmarks[indices.inner];
@@ -63,24 +39,76 @@ export function calculateEyeEAR(
 }
 
 /**
- * Calculates the average EAR of both eyes.
+ * Calculates average EAR across both eyes using specific landmarks:
+ * Left Eye: 33, 160, 158, 133, 153, 144
+ * Right Eye: 362, 385, 387, 263, 373, 380
  */
 export function calculateAverageEAR(landmarks: Landmark[]): number {
-  const leftEAR = calculateEyeEAR(landmarks, LEFT_EYE_INDICES);
-  const rightEAR = calculateEyeEAR(landmarks, RIGHT_EYE_INDICES);
+  if (!landmarks || landmarks.length < 468) {
+    return 0.30;
+  }
+
+  const leftEAR = calculateEyeEAR(landmarks, {
+    outer: 33,
+    inner: 133,
+    v1Top: 160,
+    v1Bot: 144,
+    v2Top: 158,
+    v2Bot: 153,
+  });
+
+  const rightEAR = calculateEyeEAR(landmarks, {
+    outer: 263,
+    inner: 362,
+    v1Top: 385,
+    v1Bot: 380,
+    v2Top: 387,
+    v2Bot: 373,
+  });
+
   return (leftEAR + rightEAR) / 2.0;
 }
 
 /**
- * Estimates head turn (yaw ratio) based on the nose tip
- * position relative to cheek boundaries.
- * 
- * @returns ~0.50 is centered, < 0.35 is turned left, > 0.65 is turned right
+ * Calculates head turn horizontal ratio (shift as a percentage of face width)
+ * Nose Tip: Landmark 1
+ * Left Cheek boundary: Landmark 234
+ * Right Cheek boundary: Landmark 454
+ */
+export function calculateHeadTurnRatio(landmarks: Landmark[]): number {
+  if (!landmarks || landmarks.length < 468) {
+    return 0.0;
+  }
+
+  const noseTip = landmarks[1];
+  const leftCheek = landmarks[234];
+  const rightCheek = landmarks[454];
+
+  if (!noseTip || !leftCheek || !rightCheek) {
+    return 0.0;
+  }
+
+  // Face Width: horizontal distance between cheeks
+  const faceWidth = Math.abs(rightCheek.x - leftCheek.x);
+  if (faceWidth === 0) return 0.0;
+
+  // Face Center X: midpoint between left and right cheeks
+  const faceCenterX = (leftCheek.x + rightCheek.x) / 2;
+
+  // Horizontal Shift: offset from nose tip to face center
+  const horizontalShift = noseTip.x - faceCenterX;
+
+  // Shift ratio relative to face width
+  return Math.abs(horizontalShift) / faceWidth;
+}
+
+/**
+ * Legacy head turn yaw ratio calculator, preserved to maintain existing unit tests.
  */
 export function calculateHeadYawRatio(landmarks: Landmark[]): number {
-  const nose = landmarks[HEAD_TURN_INDICES.noseTip];
-  const left = landmarks[HEAD_TURN_INDICES.leftCheek];
-  const right = landmarks[HEAD_TURN_INDICES.rightCheek];
+  const nose = landmarks[4];
+  const left = landmarks[234];
+  const right = landmarks[454];
 
   if (!nose || !left || !right) {
     return 0.50;

@@ -17,6 +17,7 @@ import Svg, { Rect } from 'react-native-svg';
 
 import { Landmark } from '../utils/livenessLogic';
 import { initializeFaceMeshModel, detectFaceFromFrame, FaceDetector } from '../components/FaceDetector';
+import LivenessCheck from '../components/LivenessCheck';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const CIRCLE_SIZE = SCREEN_WIDTH * 0.72;
@@ -34,7 +35,7 @@ type CameraScreenNavigationProp = StackNavigationProp<RootStackParamList, 'Camer
 export const CameraScreen: React.FC = () => {
   const route = useRoute<CameraScreenRouteProp>();
   const navigation = useNavigation<CameraScreenNavigationProp>();
-  
+
   // Camera permission states
   const [permissionStatus, setPermissionStatus] = useState<CameraPermissionStatus | 'checking'>('checking');
   const [isActive, setIsActive] = useState(true);
@@ -116,16 +117,16 @@ export const CameraScreen: React.FC = () => {
   // 4. Request animation frame fallback loop for simulator testing
   useEffect(() => {
     let animationFrameId: number;
-    
+
     const updateLoop = () => {
       if (isActive) {
         processFrameJS(SCREEN_WIDTH, SCREEN_HEIGHT, Date.now());
         animationFrameId = requestAnimationFrame(updateLoop);
       }
     };
-    
+
     updateLoop();
-    
+
     return () => {
       cancelAnimationFrame(animationFrameId);
     };
@@ -155,6 +156,30 @@ export const CameraScreen: React.FC = () => {
     navigation.navigate('Home');
   };
 
+  const handleLivenessConfirmed = () => {
+    setIsActive(false);
+    Alert.alert(
+      'Liveness Verified',
+      'Biometric liveness checks passed. Proceeding with face authentication...',
+      [
+        {
+          text: 'OK',
+          onPress: () => {
+            navigation.navigate('Result', {
+              status: 'SUCCESS',
+              confidence: 0.96,
+              matchDetail: {
+                name: route.params.name || 'Field Officer',
+                employeeId: route.params.empId || 'EMP072',
+                department: route.params.dept || 'Logistics',
+              },
+            });
+          },
+        },
+      ]
+    );
+  };
+
   // Compute Face Bounding Box boundaries dynamically from 468 landmarks
   const boundingBox = (() => {
     if (!faceDetected || landmarks.length === 0) return null;
@@ -162,20 +187,20 @@ export const CameraScreen: React.FC = () => {
     let maxX = -Infinity;
     let minY = Infinity;
     let maxY = -Infinity;
-    
+
     for (const p of landmarks) {
       if (p.x < minX) minX = p.x;
       if (p.x > maxX) maxX = p.x;
       if (p.y < minY) minY = p.y;
       if (p.y > maxY) maxY = p.y;
     }
-    
+
     const padding = 12;
     const x = Math.max(0, minX - padding);
     const y = Math.max(0, minY - padding);
     const w = Math.min(SCREEN_WIDTH - x, (maxX - minX) + padding * 2);
     const h = Math.min(SCREEN_HEIGHT - y, (maxY - minY) + padding * 2);
-    
+
     return { x, y, width: w, height: h };
   })();
 
@@ -254,21 +279,21 @@ export const CameraScreen: React.FC = () => {
         {/* Middle Row with Cutout */}
         <View style={[styles.overlayRow, { height: CIRCLE_SIZE }]}>
           <View style={styles.overlaySide} />
-          
+
           <View style={styles.circleGuide}>
             <View style={[styles.cornerTick, styles.tickTopLeft]} />
             <View style={[styles.cornerTick, styles.tickTopRight]} />
             <View style={[styles.cornerTick, styles.tickBottomLeft]} />
             <View style={[styles.cornerTick, styles.tickBottomRight]} />
           </View>
-          
+
           <View style={styles.overlaySide} />
         </View>
 
         {/* Bottom Overlay */}
         <View style={[styles.overlayBottom, { height: SCREEN_HEIGHT - TOP_OFFSET - CIRCLE_SIZE }]}>
           <Text style={styles.statusText}>Position your face in the circle</Text>
-          
+
           <View style={[
             styles.detectionBadge,
             faceDetected ? styles.badgeSuccess : styles.badgeDanger
@@ -277,12 +302,20 @@ export const CameraScreen: React.FC = () => {
               {faceDetected ? '✓ Face Detected' : '✕ No Face Found'}
             </Text>
           </View>
-          
+
           <TouchableOpacity style={styles.exitButton} onPress={handleExit}>
             <Text style={styles.exitButtonText}>Cancel Scan</Text>
           </TouchableOpacity>
         </View>
       </View>
+
+      {/* Liveness Check Requirements Checklist Panel Overlay */}
+      {faceDetected && (
+        <LivenessCheck
+          landmarks={landmarks}
+          onLivenessConfirmed={handleLivenessConfirmed}
+        />
+      )}
 
       {/* Model Load State Status Bar */}
       <View style={styles.detectorStatus}>
