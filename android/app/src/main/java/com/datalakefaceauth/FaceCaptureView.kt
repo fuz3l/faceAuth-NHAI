@@ -14,6 +14,7 @@ import android.view.SurfaceView
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import androidx.camera.core.*
+import androidx.camera.core.Camera
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
@@ -452,19 +453,19 @@ class FaceCaptureView @JvmOverloads constructor(
             }
 
             // Output landmarks: 1 x 1404 (468 points * 3 coordinates)
-            // or 1 x 468 x 3
-            val output = Array(1) { Array(468) { FloatArray(3) } }
+            val output = Array(1) { FloatArray(1404) }
             
             interpreter.run(input, output)
 
             val list = ArrayList<Point3F>()
             // Check if coordinates make sense (if face present, landmarks are in range)
             for (i in 0 until 468) {
+                val base = i * 3
                 list.add(
                     Point3F(
-                        output[0][i][0] / 192.0f, // Normalize coordinates to [0,1]
-                        output[0][i][1] / 192.0f,
-                        output[0][i][2] / 192.0f
+                        output[0][base] / 192.0f, // Normalize coordinates to [0,1]
+                        output[0][base + 1] / 192.0f,
+                        output[0][base + 2] / 192.0f
                     )
                 )
             }
@@ -646,14 +647,14 @@ class FaceCaptureView @JvmOverloads constructor(
         simulationRunnable?.let { mainHandler.removeCallbacks(it) }
     }
 
-    // Canvas overlay for facial landmaks grid drawing
-    private class OverlayView(context: Context) : SurfaceView(context), SurfaceHolder.Callback {
+    // Canvas overlay for facial landmarks grid drawing
+    private class OverlayView(context: Context) : android.view.View(context) {
         private var points: List<PointF> = emptyList()
         private var faceDetected = false
+        private val pointRadius = 3.5f
         private val paintPoint = Paint().apply {
             color = Color.parseColor("#00E676") // Vibrant Neon Green
             style = Paint.Style.FILL
-            radius = 3.5f
             isAntiAlias = true
         }
         private val paintLine = Paint().apply {
@@ -663,28 +664,20 @@ class FaceCaptureView @JvmOverloads constructor(
             isAntiAlias = true
         }
 
-        init {
-            setZOrderOnTop(true)
-            holder.setFormat(PixelFormat.TRANSLUCENT)
-            holder.addCallback(this)
-        }
-
         fun setFaceData(facePoints: List<PointF>, detected: Boolean) {
             points = facePoints
             faceDetected = detected
-            draw()
+            invalidate() // Request redraw on the main thread
         }
 
-        private fun draw() {
-            val canvas = holder.lockCanvas() ?: return
-            canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
-
+        override fun onDraw(canvas: Canvas) {
+            super.onDraw(canvas)
             if (faceDetected && points.isNotEmpty()) {
                 // Draw subset of points to make a beautiful, futuristic tech-mesh grid
                 // MediaPipe Mesh has contours and structure. We can draw connections to look premium.
                 // 1. Draw points
                 for (pt in points) {
-                    canvas.drawCircle(pt.x, pt.y, paintPoint.radius, paintPoint)
+                    canvas.drawCircle(pt.x, pt.y, pointRadius, paintPoint)
                 }
 
                 // 2. Draw connections (e.g., join neighboring indices to make a skeleton)
@@ -697,7 +690,6 @@ class FaceCaptureView @JvmOverloads constructor(
                 // Draw mouth outline
                 drawOutline(canvas, points, listOf(78, 95, 88, 178, 87, 14, 317, 402, 318, 324, 308))
             }
-            holder.unlockCanvasAndPost(canvas)
         }
 
         private fun drawOutline(canvas: Canvas, pts: List<PointF>, indices: List<Int>) {
@@ -716,9 +708,5 @@ class FaceCaptureView @JvmOverloads constructor(
             }
             canvas.drawPath(path, paintLine)
         }
-
-        override fun surfaceCreated(holder: SurfaceHolder) { draw() }
-        override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) { draw() }
-        override fun surfaceDestroyed(holder: SurfaceHolder) {}
     }
 }
